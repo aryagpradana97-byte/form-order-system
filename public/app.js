@@ -71,6 +71,9 @@
     $all('.view').forEach(function (v) { v.classList.remove('active'); });
     $('#view-' + view).classList.add('active');
     $all('.nav-item').forEach(function (n) { n.classList.toggle('active', n.dataset.view === view); });
+    if (location.hash !== '#' + view) {
+      try { history.replaceState(null, '', '#' + view); } catch (e) { location.hash = view; }
+    }
   }
 
   /* --------------------------- Orders ------------------------------- */
@@ -642,6 +645,8 @@
 
   /* ----------------------------- Init ------------------------------- */
   function init() {
+    var h = (location.hash || '').replace('#', '');
+    if (['orders', 'promos', 'forms', 'products'].indexOf(h) > -1) switchView(h);
     $all('.nav-item').forEach(function (n) { n.addEventListener('click', function () { switchView(n.dataset.view); }); });
     $('#modal-close').addEventListener('click', closeModal);
     $('#modal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
