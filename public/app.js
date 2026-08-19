@@ -1,8 +1,25 @@
 (function () {
   'use strict';
 
-  var state = { orders: [], forms: [], products: [], promos: [], filters: {}, publicBaseUrl: '' };
+  var state = { orders: [], forms: [], products: [], promos: [], filters: {}, publicBaseUrl: '', columns: {} };
   var STATUS_OPTIONS = ['Draft', 'Submitted', 'Valid', 'Connected', 'Not Connected', 'Deal'];
+  var COLUMN_OPTIONS = [
+    { key: 'campaignId', label: 'Campaign ID' },
+    { key: 'adgroupId', label: 'AdGroup / AdSet ID' },
+    { key: 'adId', label: 'Ad ID' },
+    { key: 'clickId', label: 'Click ID' },
+    { key: 'entityId', label: 'Entity ID' },
+    { key: 'utm_source', label: 'UTM Source' },
+    { key: 'utm_medium', label: 'UTM Medium' },
+    { key: 'utm_campaign', label: 'UTM Campaign' },
+    { key: 'utm_term', label: 'UTM Term' },
+    { key: 'utm_content', label: 'UTM Content' },
+    { key: 'utm_id', label: 'UTM ID' },
+    { key: 'total', label: 'Total' },
+    { key: 'notes', label: 'Notes' },
+    { key: 'events', label: 'Events' }
+  ];
+  try { state.columns = JSON.parse(localStorage.getItem('fo_columns')) || {}; } catch (e) { state.columns = {}; }
   var debounceTimer = null;
 
   function $(sel) { return document.querySelector(sel); }
@@ -97,18 +114,26 @@
     });
   }
 
+  function colCell(key, o) {
+    if (key === 'total') return o.total ? 'Rp ' + Number(o.total).toLocaleString('id-ID') : '-';
+    if (key === 'events') {
+      var ev = o.events || {};
+      return ['metaPixel', 'gtm', 'tiktok', 'googleAds'].filter(function (k) { return ev[k]; }).join(', ') || '-';
+    }
+    return esc(o[key] || '-');
+  }
+
   function renderOrders() {
     var thead = $('#orders-head');
     var body = $('#orders-body');
-    var showDetail = !!state.filters.showDetail;
-    body.innerHTML = '';
     var empty = $('#orders-empty');
+    var enabled = COLUMN_OPTIONS.filter(function (c) { return state.columns[c.key]; });
+    var baseHeaders = ['Time', 'Form', 'Status', 'Name', 'Phone', 'Location', 'Platform', 'Campaign', 'Promo'];
 
-    thead.innerHTML = '<tr>' + [
-      'Waktu', 'Form', 'Status', 'Nama', 'No HP', 'Lokasi', 'Platform', 'Campaign', 'Promo'
-    ].concat(showDetail ? ['Campaign ID', 'AdGroup/AdSet', 'Ad ID', 'Click ID', 'Entity ID', 'Total', 'Catatan', 'Events'] : [])
-      .concat(['Aksi']).map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+    thead.innerHTML = '<tr>' + baseHeaders.concat(enabled.map(function (c) { return c.label; })).concat(['Actions'])
+      .map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
 
+    body.innerHTML = '';
     if (!state.orders.length) {
       empty.classList.remove('hidden');
       return;
@@ -118,11 +143,7 @@
     state.orders.forEach(function (o) {
       var tr = document.createElement('tr');
       var time = o.createdAt ? new Date(o.createdAt) : null;
-      var timeStr = time ? time.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) + ' ' + time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
-      var ev = o.events || {};
-      var eventsStr = ['metaPixel', 'gtm', 'tiktok', 'googleAds'].filter(function (k) { return ev[k]; }).join(', ') || '-';
-      var productsStr = (o.products && o.products.length)
-        ? o.products.map(function (p) { return (p.qty ? p.qty + 'x ' : '') + p.name; }).join(', ') : '-';
+      var timeStr = time ? time.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' + time.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '-';
       var cells =
         '<td>' + esc(timeStr) + '</td>' +
         '<td>' + esc(o.form || '-') + '</td>' +
@@ -133,23 +154,13 @@
         '<td><span class="platform-pill ' + platformClass(o.platform) + '">' + esc(o.platform || '-') + '</span></td>' +
         '<td>' + esc(o.utm_campaign || o.campaignId || '-') + '</td>' +
         '<td>' + esc(o.promo || '-') + '</td>';
-      if (showDetail) {
-        cells +=
-          '<td>' + esc(o.campaignId || '-') + '</td>' +
-          '<td>' + esc(o.adgroupId || '-') + '</td>' +
-          '<td>' + esc(o.adId || '-') + '</td>' +
-          '<td>' + esc(o.clickId || '-') + '</td>' +
-          '<td>' + esc(o.entityId || '-') + '</td>' +
-          '<td>' + (o.total ? 'Rp ' + Number(o.total).toLocaleString('id-ID') : '-') + '</td>' +
-          '<td>' + esc(o.notes || '-') + '</td>' +
-          '<td>' + esc(eventsStr) + '</td>';
-      }
+      cells += enabled.map(function (c) { return '<td>' + colCell(c.key, o) + '</td>'; }).join('');
       cells += '<td><span class="row-actions"></span></td>';
       tr.innerHTML = cells;
       var actions = tr.querySelector('.row-actions');
       actions.innerHTML =
         '<button class="btn ghost sm" data-act="view">Detail</button>' +
-        '<button class="btn danger sm" data-act="del">Hapus</button>';
+        '<button class="btn danger sm" data-act="del">Delete</button>';
       tr.addEventListener('click', function (e) {
         var act = e.target && e.target.getAttribute ? e.target.getAttribute('data-act') : null;
         if (act === 'del') { e.stopPropagation(); deleteOrder(o.id); return; }
@@ -160,10 +171,35 @@
     });
   }
 
+  /* -------------------- Column display options ---------------------- */
+  function openColumns() {
+    var box = $('#col-options');
+    box.innerHTML = '';
+    COLUMN_OPTIONS.forEach(function (c) {
+      var row = document.createElement('label');
+      row.className = 'col-row';
+      row.innerHTML = '<input type="checkbox" data-col="' + c.key + '"' + (state.columns[c.key] ? ' checked' : '') + '><span>' + c.label + '</span>';
+      box.appendChild(row);
+    });
+    $('#col-modal').classList.remove('hidden');
+  }
+
+  function saveColumns() {
+    COLUMN_OPTIONS.forEach(function (c) {
+      var cb = $('#col-modal').querySelector('[data-col="' + c.key + '"]');
+      state.columns[c.key] = !!(cb && cb.checked);
+    });
+    try { localStorage.setItem('fo_columns', JSON.stringify(state.columns)); } catch (e) {}
+    $('#col-modal').classList.add('hidden');
+    renderOrders();
+  }
+
+  function cancelColumns() { $('#col-modal').classList.add('hidden'); }
+
   function deleteOrder(id) {
-    if (!confirm('Hapus order ini?')) return;
+    if (!confirm('Delete this order?')) return;
     api('/api/orders/' + id, { method: 'DELETE' }).then(function () {
-      toast('Order dihapus');
+      toast('Order deleted');
       loadOrders(); renderStats();
     });
   }
@@ -171,11 +207,11 @@
   function openDetail(id) {
     var o = state.orders.find(function (x) { return x.id === id; });
     if (!o) return;
-    $('#modal-title').textContent = 'Detail Order — ' + (o.nama || o.sessionId);
+    $('#modal-title').textContent = 'Order Detail — ' + (o.nama || o.sessionId);
     var grid = [
       ['Status', o.status], ['Form', o.form], ['Session ID', o.sessionId],
-      ['Nama', o.nama], ['No HP', o.nohp], ['Plat', o.plat],
-      ['Mobil', o.mobil], ['Lokasi', o.workshop], ['Keluhan', o.keluhan],
+      ['Name', o.nama], ['Phone', o.nohp], ['Plate', o.plat],
+      ['Car', o.mobil], ['Location', o.workshop], ['Complaint', o.keluhan],
       ['Platform', o.platform], ['Promo', o.promo], ['Keyword', o.keyword]
     ];
     var track = [
@@ -204,9 +240,9 @@
 
     $('#modal-body').innerHTML =
       '<div class="detail-section"><h4>Lead</h4><div class="detail-grid">' + gridHtml(grid) + '</div></div>' +
-      '<div class="detail-section"><h4>Produk / Layanan</h4><div class="val">' + esc(productsStr) + '</div><div class="val" style="margin-top:4px">Total: <strong>' + (o.total ? 'Rp ' + Number(o.total).toLocaleString('id-ID') : '-') + '</strong></div></div>' +
+      '<div class="detail-section"><h4>Products / Services</h4><div class="val">' + esc(productsStr) + '</div><div class="val" style="margin-top:4px">Total: <strong>' + (o.total ? 'Rp ' + Number(o.total).toLocaleString('id-ID') : '-') + '</strong></div></div>' +
       '<div class="detail-section"><h4>Tracking</h4><div class="detail-grid">' + gridHtml(track) + '</div></div>' +
-      '<div class="detail-section"><h4>Event Terkirim</h4><div class="val">' + esc(eventsStr) + '</div></div>' +
+      '<div class="detail-section"><h4>Events Fired</h4><div class="val">' + esc(eventsStr) + '</div></div>' +
       '<div class="status-editor">' +
       '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
       '<select id="detail-status" class="input">' +
@@ -214,17 +250,17 @@
         return '<option' + (s === o.status ? ' selected' : '') + '>' + s + '</option>';
       }).join('') +
       '</select>' +
-      '<button class="btn primary sm" id="detail-save">Simpan Status</button>' +
+      '<button class="btn primary sm" id="detail-save">Save Status</button>' +
       '</div>' +
-      '<div class="detail-section" style="margin-top:12px"><h4>Catatan / Alasan</h4>' +
-      '<textarea id="detail-notes" class="input" style="width:100%;min-height:60px" placeholder="Tulis alasan / catatan follow-up CS di sini">' + esc(o.notes || '') + '</textarea></div>' +
+      '<div class="detail-section" style="margin-top:12px"><h4>Notes / Reason</h4>' +
+      '<textarea id="detail-notes" class="input" style="width:100%;min-height:60px" placeholder="Write the reason / CS follow-up note here">' + esc(o.notes || '') + '</textarea></div>' +
       '</div>';
 
     $('#detail-save').addEventListener('click', function () {
       var status = $('#detail-status').value;
       var notes = $('#detail-notes').value.trim();
       api('/api/orders/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: status, notes: notes }) })
-        .then(function () { toast('Status & catatan disimpan'); closeModal(); loadOrders(); renderStats(); });
+        .then(function () { toast('Status & notes saved'); closeModal(); loadOrders(); renderStats(); });
     });
 
     $('#modal').classList.remove('hidden');
@@ -278,22 +314,22 @@
       card.dataset.id = f.id;
       card.innerHTML =
         '<div class="form-card-head"><h3>' + esc(f.name) + '</h3><span class="type-tag">' + esc(f.type) + '</span></div>' +
-        '<div class="form-field"><label>Nama Form</label><input type="text" data-f="name" value="' + esc(f.name) + '" /></div>' +
+        '<div class="form-field"><label>Form Name</label><input type="text" data-f="name" value="' + esc(f.name) + '" /></div>' +
         '<div class="form-field"><label>Tipe</label><select data-f="type">' +
         ['short', 'long', 'direct', 'order'].map(function (t2) {
           return '<option value="' + t2 + '"' + (f.type === t2 ? ' selected' : '') + '>' + t2 + '</option>';
         }).join('') + '</select></div>' +
-        '<div class="form-field"><label>Admin WhatsApp (nomor)</label><input type="text" data-f="adminWa" value="' + esc(f.adminWa || '') + '" placeholder="628xxxxxx" /></div>' +
+        '<div class="form-field"><label>Admin WhatsApp (number)</label><input type="text" data-f="adminWa" value="' + esc(f.adminWa || '') + '" placeholder="628xxxxxx" /></div>' +
         trackingToggle('metaPixel', 'Meta Pixel', t.metaPixel) +
         trackingToggle('gtm', 'Google Tag Manager', t.gtm) +
         trackingToggle('tiktok', 'TikTok Pixel', t.tiktok) +
         trackingToggle('googleAds', 'Google Ads (gtag)', t.googleAds) +
-        '<div class="toggle-row"><span>Form Aktif</span>' +
+        '<div class="toggle-row"><span>Active</span>' +
         '<label class="toggle"><input type="checkbox" data-f="enabled"' + (f.enabled ? ' checked' : '') + '><span class="slider"></span></label></div>' +
         '<div class="form-card-actions">' +
         '<button class="btn ghost" data-act="embed">Copy Embed</button>' +
-        '<button class="btn primary" data-act="save">Simpan</button>' +
-        '<button class="btn danger" data-act="del">Hapus</button>' +
+        '<button class="btn primary" data-act="save">Save</button>' +
+        '<button class="btn danger" data-act="del">Delete</button>' +
         '</div>';
 
       card.querySelector('[data-act="save"]').addEventListener('click', function () { saveForm(f.id, card); });
@@ -316,21 +352,21 @@
     };
     api('/api/forms?id=' + encodeURIComponent(id), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-    }).then(function () { toast('Form disimpan'); loadForms(); });
+    }).then(function () { toast('Form saved'); loadForms(); });
   }
 
   function addForm() {
     var id = 'form-' + Date.now().toString(36);
     api('/api/forms', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: id, name: 'Form Baru', type: 'short', enabled: true, adminWa: '', tracking: { metaPixel: false, gtm: false, tiktok: false, googleAds: false } })
-    }).then(function () { toast('Form ditambahkan'); loadForms(); });
+      body: JSON.stringify({ id: id, name: 'New Form', type: 'short', enabled: true, adminWa: '', tracking: { metaPixel: false, gtm: false, tiktok: false, googleAds: false } })
+    }).then(function () { toast('Form added'); loadForms(); });
   }
 
   function deleteForm(id) {
-    if (!confirm('Hapus form ini?')) return;
+    if (!confirm('Delete this form?')) return;
     api('/api/forms?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(function () {
-      toast('Form dihapus'); loadForms();
+      toast('Form deleted'); loadForms();
     });
   }
 
@@ -354,10 +390,10 @@
       card.dataset.id = p.id;
       card.innerHTML =
         '<div class="form-card-head"><h3>' + esc(p.name) + '</h3><span class="type-tag">' + esc(p.category) + '</span></div>' +
-        '<div class="form-field"><label>Nama</label><input type="text" data-p="name" value="' + esc(p.name) + '" /></div>' +
-        '<div class="form-field"><label>Kategori</label><input type="text" data-p="category" value="' + esc(p.category) + '" /></div>' +
-        '<div class="form-field"><label>Harga (Rp)</label><input type="number" data-p="price" value="' + esc(p.price) + '" /></div>' +
-        '<div class="form-card-actions"><button class="btn primary" data-act="save">Simpan</button><button class="btn danger" data-act="del">Hapus</button></div>';
+        '<div class="form-field"><label>Name</label><input type="text" data-p="name" value="' + esc(p.name) + '" /></div>' +
+        '<div class="form-field"><label>Category</label><input type="text" data-p="category" value="' + esc(p.category) + '" /></div>' +
+        '<div class="form-field"><label>Price (Rp)</label><input type="number" data-p="price" value="' + esc(p.price) + '" /></div>' +
+        '<div class="form-card-actions"><button class="btn primary" data-act="save">Save</button><button class="btn danger" data-act="del">Delete</button></div>';
       card.querySelector('[data-act="save"]').addEventListener('click', function () { saveProduct(p.id, card); });
       card.querySelector('[data-act="del"]').addEventListener('click', function () { deleteProduct(p.id); });
       list.appendChild(card);
@@ -372,18 +408,18 @@
       price: Number(card.querySelector('[data-p="price"]').value) || 0
     };
     api('/api/products?id=' + encodeURIComponent(id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function () { toast('Produk disimpan'); loadProducts(); });
+      .then(function () { toast('Product saved'); loadProducts(); });
   }
 
   function addProduct() {
     var id = 'p-' + Date.now().toString(36);
-    api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, name: 'Layanan Baru', category: 'Service', price: 0 }) })
-      .then(function () { toast('Produk ditambahkan'); loadProducts(); });
+    api('/api/products', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, name: 'New Service', category: 'Service', price: 0 }) })
+      .then(function () { toast('Product added'); loadProducts(); });
   }
 
   function deleteProduct(id) {
-    if (!confirm('Hapus produk ini?')) return;
-    api('/api/products?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(function () { toast('Produk dihapus'); loadProducts(); });
+    if (!confirm('Delete this product?')) return;
+    api('/api/products?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(function () { toast('Product deleted'); loadProducts(); });
   }
 
   /* --------------------------- Promos ------------------------------ */
@@ -408,17 +444,17 @@
           return '<div class="gen-form-row"><span class="tname">' + esc(f.name) + ' <span class="badge ' + (f.type === 'long' ? 'confirmed' : 'submitted') + '">' + (f.type === 'long' ? 'Full' : f.type) + '</span></span>' +
             '<button class="btn ghost sm" data-embed="' + esc(f.id) + '">Copy Embed</button></div>';
         }).join('')
-        : '<div class="gen-form-row" style="color:#6b7686">Belum ada form. Klik "Generate Short + Full".</div>';
+        : '<div class="gen-form-row" style="color:#6b7686">No forms yet. Click "Generate Short + Full".</div>';
       card.innerHTML =
         '<div class="form-card-head"><h3>' + esc(p.name) + '</h3><span class="promo-platform">' + esc(p.platform) + '</span></div>' +
-        '<div class="form-field"><label>Nama Promo</label><input type="text" data-promo="name" value="' + esc(p.name) + '" /></div>' +
+        '<div class="form-field"><label>Promo Name</label><input type="text" data-promo="name" value="' + esc(p.name) + '" /></div>' +
         '<div class="form-field"><label>Platform</label><input type="text" data-promo="platform" value="' + esc(p.platform) + '" list="platform-list" /></div>' +
-        '<div class="form-field"><label>Kode Promo (opsional)</label><input type="text" data-promo="code" value="' + esc(p.code || '') + '" /></div>' +
-        '<div class="form-field"><label>Admin WhatsApp (opsional)</label><input type="text" data-promo="adminWa" value="' + esc(p.adminWa || '') + '" /></div>' +
+        '<div class="form-field"><label>Promo Code (optional)</label><input type="text" data-promo="code" value="' + esc(p.code || '') + '" /></div>' +
+        '<div class="form-field"><label>Admin WhatsApp (optional)</label><input type="text" data-promo="adminWa" value="' + esc(p.adminWa || '') + '" /></div>' +
         '<div class="form-card-actions"><button class="btn ghost" data-gen="' + esc(p.id) + '">⚡ Generate Short + Full</button>' +
-        '<button class="btn primary" data-save="' + esc(p.id) + '">Simpan</button>' +
-        '<button class="btn danger" data-del="' + esc(p.id) + '">Hapus</button></div>' +
-        '<div class="gen-forms"><h5>Form Promo ini</h5>' + genRows + '</div>';
+        '<button class="btn primary" data-save="' + esc(p.id) + '">Save</button>' +
+        '<button class="btn danger" data-del="' + esc(p.id) + '">Delete</button></div>' +
+        '<div class="gen-forms"><h5>Forms for this promo</h5>' + genRows + '</div>';
       card.querySelector('[data-save]').addEventListener('click', function () { savePromo(p.id, card); });
       card.querySelector('[data-del]').addEventListener('click', function () { deletePromo(p.id); });
       card.querySelector('[data-gen]').addEventListener('click', function () { generateForms(p.id); });
@@ -436,23 +472,23 @@
       adminWa: card.querySelector('[data-promo="adminWa"]').value
     };
     api('/api/promos?id=' + encodeURIComponent(id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function () { toast('Promo disimpan'); loadPromos(); });
+      .then(function () { toast('Promo saved'); loadPromos(); });
   }
 
   function addPromo() {
     var id = 'promo-' + Date.now().toString(36);
-    api('/api/promos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, name: 'Promo Baru', platform: 'Meta Ads', code: '', active: true, adminWa: '' }) })
-      .then(function () { toast('Promo ditambahkan'); loadPromos(); });
+    api('/api/promos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, name: 'New Promo', platform: 'Meta Ads', code: '', active: true, adminWa: '' }) })
+      .then(function () { toast('Promo added'); loadPromos(); });
   }
 
   function deletePromo(id) {
-    if (!confirm('Hapus promo ini? (form-nya tetap ada)')) return;
-    api('/api/promos?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(function () { toast('Promo dihapus'); loadPromos(); });
+    if (!confirm('Delete this promo? (its forms remain)')) return;
+    api('/api/promos?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(function () { toast('Promo deleted'); loadPromos(); });
   }
 
   function generateForms(promoId) {
     api('/api/promos/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ promoId: promoId }) })
-      .then(function () { toast('Form Short + Full dibuat'); loadForms().then(loadPromos); });
+      .then(function () { toast('Short + Full forms created'); loadForms().then(loadPromos); });
   }
 
   /* --------------------------- Embed code -------------------------- */
@@ -515,7 +551,7 @@
   function copyEmbed() {
     var ta = $('#embed-code');
     ta.select();
-    try { document.execCommand('copy'); toast('Kode di-copy'); } catch (e) { toast('Gagal copy, pilih manual'); }
+    try { document.execCommand('copy'); toast('Code copied'); } catch (e) { toast('Copy failed, select manually'); }
   }
 
   /* ----------------------- Add order modal ------------------------- */
@@ -551,7 +587,7 @@
       tracking: { platform: 'Manual' }
     };
     api('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function () { toast('Order ditambahkan'); $('#add-modal').classList.add('hidden'); loadOrders(); renderStats(); });
+      .then(function () { toast('Order added'); $('#add-modal').classList.add('hidden'); loadOrders(); renderStats(); });
   }
 
   /* ------------------------- Filter wiring -------------------------- */
@@ -563,14 +599,10 @@
         debounceTimer = setTimeout(applyFilters, 250);
       });
     });
-    $('#f-detail').addEventListener('change', function () {
-      state.filters.showDetail = this.checked;
-      renderOrders();
-    });
+    $('#btn-columns').addEventListener('click', openColumns);
     $('#btn-clear-filter').addEventListener('click', function () {
       state.filters = {};
       els.forEach(function (id) { $('#' + id).value = ''; });
-      $('#f-detail').checked = false;
       applyFilters();
     });
   }
@@ -608,6 +640,10 @@
     $('#embed-modal-close').addEventListener('click', function () { $('#embed-modal').classList.add('hidden'); });
     $('#embed-copy').addEventListener('click', copyEmbed);
     $('#embed-modal').addEventListener('click', function (e) { if (e.target === this) this.classList.add('hidden'); });
+    $('#col-modal-close').addEventListener('click', cancelColumns);
+    $('#col-cancel').addEventListener('click', cancelColumns);
+    $('#col-save').addEventListener('click', saveColumns);
+    $('#col-modal').addEventListener('click', function (e) { if (e.target === this) cancelColumns(); });
     bindFilters();
 
     api('/api/health').then(function () {
