@@ -1,0 +1,12 @@
+{
+  "name": "form-order-system",
+  "version": "1.0.0",
+  "description": "Order form + order management with per-form tracking (Meta Pixel / GTM / TikTok / Google Ads) and consolidated UTM/click-ID tracking. Zero dependencies.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+}

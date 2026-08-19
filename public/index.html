@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Form Order System — Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">FO</div>
+        <div class="brand-text">
+          <strong>Form Order</strong>
+          <span>Tracking &amp; Orders</span>
+        </div>
+      </div>
+      <nav class="nav">
+        <button class="nav-item active" data-view="orders">📋 Order Management</button>
+        <button class="nav-item" data-view="forms">🧩 Form Settings</button>
+        <button class="nav-item" data-view="products">🛒 Produk / Layanan</button>
+      </nav>
+      <div class="sidebar-foot">
+        <span id="api-status" class="api-status">connecting…</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <!-- ======================= ORDERS ======================= -->
+      <section id="view-orders" class="view active">
+        <header class="page-head">
+          <div>
+            <h1>Order Management</h1>
+            <p class="sub">Semua lead &amp; tracking dalam satu tempat.</p>
+          </div>
+          <div class="head-actions">
+            <button class="btn ghost" id="btn-add-order">＋ Tambah Order</button>
+            <button class="btn primary" id="btn-export">⬇ Export CSV</button>
+          </div>
+        </header>
+
+        <div class="stats-grid" id="stats-grid"></div>
+
+        <div class="card">
+          <div class="filter-bar">
+            <input type="search" id="f-search" class="input" placeholder="🔍 Cari nama, no HP, plat, ID, promo…" />
+            <select id="f-platform" class="input"><option value="">Semua Platform</option></select>
+            <select id="f-form" class="input"><option value="">Semua Form</option></select>
+            <select id="f-status" class="input">
+              <option value="">Semua Status</option>
+              <option>Draft</option>
+              <option>Submitted</option>
+              <option>Confirmed</option>
+              <option>Paid</option>
+              <option>Cancelled</option>
+            </select>
+            <input type="date" id="f-from" class="input" title="Dari tanggal" />
+            <input type="date" id="f-to" class="input" title="Sampai tanggal" />
+            <button class="btn ghost" id="btn-clear-filter">Reset</button>
+          </div>
+          <div class="table-wrap">
+            <table class="orders-table" id="orders-table">
+              <thead>
+                <tr>
+                  <th>Waktu</th><th>Form</th><th>Status</th><th>Nama</th><th>No HP</th>
+                  <th>Lokasi</th><th>Platform</th><th>Campaign</th><th>Promo</th><th>Aksi</th>
+                </tr>
+              </thead>
+              <tbody id="orders-body"></tbody>
+            </table>
+            <div id="orders-empty" class="empty hidden">Tidak ada data yang cocok.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ======================= FORMS ======================= -->
+      <section id="view-forms" class="view">
+        <header class="page-head">
+          <div>
+            <h1>Form Settings</h1>
+            <p class="sub">Atur tracking (Pixel / GTM / TikTok / Google Ads) per form.</p>
+          </div>
+          <button class="btn primary" id="btn-add-form">＋ Tambah Form</button>
+        </header>
+        <div id="forms-list" class="forms-list"></div>
+      </section>
+
+      <!-- ======================= PRODUCTS ======================= -->
+      <section id="view-products" class="view">
+        <header class="page-head">
+          <div>
+            <h1>Produk / Layanan</h1>
+            <p class="sub">Daftar layanan &amp; produk untuk pemilihan order manual.</p>
+          </div>
+          <button class="btn primary" id="btn-add-product">＋ Tambah Produk</button>
+        </header>
+        <div id="products-list" class="products-list"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Order detail modal -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2 id="modal-title">Detail Order</h2>
+        <button class="modal-close" id="modal-close">✕</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Add order modal -->
+  <div id="add-modal" class="modal hidden">
+    <div class="modal-box">
+      <div class="modal-head">
+        <h2>Tambah Order Manual</h2>
+        <button class="modal-close" id="add-modal-close">✕</button>
+      </div>
+      <div class="modal-body" id="add-modal-body">
+        <div class="form-field"><label>Nama</label><input type="text" id="ao-nama" class="input" style="width:100%" /></div>
+        <div class="form-field"><label>No HP</label><input type="text" id="ao-nohp" class="input" style="width:100%" /></div>
+        <div class="form-field"><label>Plat / Mobil</label><input type="text" id="ao-plat" class="input" style="width:100%" placeholder="Plat nomor / mobil (opsional)" /></div>
+        <div class="form-field"><label>Lokasi / Workshop</label><input type="text" id="ao-workshop" class="input" style="width:100%" placeholder="Kelapa Gading / PIK2" /></div>
+        <div class="form-field"><label>Status</label>
+          <select id="ao-status" class="input" style="width:100%">
+            <option>Confirmed</option><option>Submitted</option><option>Paid</option><option>Draft</option><option>Cancelled</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Pilih Produk / Layanan</label><div id="ao-products" class="ao-products"></div></div>
+        <div class="form-field"><label>Catatan</label><textarea id="ao-notes" class="input" style="width:100%" rows="2"></textarea></div>
+        <div class="form-card-actions">
+          <button class="btn primary" id="ao-save">Simpan Order</button>
+          <button class="btn ghost" id="ao-cancel">Batal</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

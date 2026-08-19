@@ -1,0 +1,9 @@
+# Runtime data (regenerated on boot)
+data/
+
+# Local config (may contain your Apps Script URL)
+config.json
+
+# Dependencies / OS
+node_modules/
+.DS_Store
