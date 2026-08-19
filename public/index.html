@@ -52,22 +52,19 @@
               <option value="">Semua Status</option>
               <option>Draft</option>
               <option>Submitted</option>
-              <option>Confirmed</option>
-              <option>Paid</option>
-              <option>Cancelled</option>
+              <option>Valid</option>
+              <option>Connected</option>
+              <option>Not Connected</option>
+              <option>Deal</option>
             </select>
             <input type="date" id="f-from" class="input" title="Dari tanggal" />
             <input type="date" id="f-to" class="input" title="Sampai tanggal" />
+            <label class="chk"><input type="checkbox" id="f-detail" /> Tampilkan detail</label>
             <button class="btn ghost" id="btn-clear-filter">Reset</button>
           </div>
           <div class="table-wrap">
             <table class="orders-table" id="orders-table">
-              <thead>
-                <tr>
-                  <th>Waktu</th><th>Form</th><th>Status</th><th>Nama</th><th>No HP</th>
-                  <th>Lokasi</th><th>Platform</th><th>Campaign</th><th>Promo</th><th>Aksi</th>
-                </tr>
-              </thead>
+              <thead id="orders-head"></thead>
               <tbody id="orders-body"></tbody>
             </table>
             <div id="orders-empty" class="empty hidden">Tidak ada data yang cocok.</div>
@@ -138,7 +135,7 @@
         <div class="form-field"><label>Lokasi / Workshop</label><input type="text" id="ao-workshop" class="input" style="width:100%" placeholder="Kelapa Gading / PIK2" /></div>
         <div class="form-field"><label>Status</label>
           <select id="ao-status" class="input" style="width:100%">
-            <option>Confirmed</option><option>Submitted</option><option>Paid</option><option>Draft</option><option>Cancelled</option>
+            <option>Valid</option><option>Connected</option><option>Not Connected</option><option>Deal</option><option>Submitted</option><option>Draft</option>
           </select>
         </div>
         <div class="form-field"><label>Pilih Produk / Layanan</label><div id="ao-products" class="ao-products"></div></div>

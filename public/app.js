@@ -2,6 +2,7 @@
   'use strict';
 
   var state = { orders: [], forms: [], products: [], promos: [], filters: {}, publicBaseUrl: '' };
+  var STATUS_OPTIONS = ['Draft', 'Submitted', 'Valid', 'Connected', 'Not Connected', 'Deal'];
   var debounceTimer = null;
 
   function $(sel) { return document.querySelector(sel); }
@@ -29,10 +30,13 @@
     var s = String(status || '').toLowerCase();
     if (s.indexOf('draft') > -1) return 'draft';
     if (s.indexOf('submit') > -1) return 'submitted';
+    if (s.indexOf('not') > -1 && s.indexOf('connect') > -1) return 'notconnected';
+    if (s.indexOf('connect') > -1) return 'connected';
+    if (s.indexOf('valid') > -1) return 'valid';
+    if (s.indexOf('deal') > -1) return 'deal';
     if (s.indexOf('confirm') > -1) return 'confirmed';
     if (s.indexOf('paid') > -1) return 'paid';
     if (s.indexOf('cancel') > -1) return 'cancelled';
-    if (s.indexOf('direct') > -1) return 'direct';
     return 'draft';
   }
 
@@ -79,9 +83,10 @@
       var cards = [
         { v: s.total, l: 'Total Lead' },
         { v: s.byStatus.Submitted || 0, l: 'Submitted' },
-        { v: s.byStatus.Draft || 0, l: 'Draft' },
-        { v: s.byStatus.Confirmed || 0, l: 'Confirmed' },
-        { v: Object.keys(s.byPlatform || {}).length, l: 'Platform Aktif' }
+        { v: s.byStatus.Valid || 0, l: 'Valid' },
+        { v: s.byStatus.Connected || 0, l: 'Connected' },
+        { v: s.byStatus['Not Connected'] || 0, l: 'Not Connected' },
+        { v: s.byStatus.Deal || 0, l: 'Deal' }
       ];
       cards.forEach(function (c) {
         var el = document.createElement('div');
@@ -93,19 +98,32 @@
   }
 
   function renderOrders() {
+    var thead = $('#orders-head');
     var body = $('#orders-body');
+    var showDetail = !!state.filters.showDetail;
     body.innerHTML = '';
     var empty = $('#orders-empty');
+
+    thead.innerHTML = '<tr>' + [
+      'Waktu', 'Form', 'Status', 'Nama', 'No HP', 'Lokasi', 'Platform', 'Campaign', 'Promo'
+    ].concat(showDetail ? ['Campaign ID', 'AdGroup/AdSet', 'Ad ID', 'Click ID', 'Entity ID', 'Total', 'Catatan', 'Events'] : [])
+      .concat(['Aksi']).map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+
     if (!state.orders.length) {
       empty.classList.remove('hidden');
       return;
     }
     empty.classList.add('hidden');
+
     state.orders.forEach(function (o) {
       var tr = document.createElement('tr');
       var time = o.createdAt ? new Date(o.createdAt) : null;
       var timeStr = time ? time.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }) + ' ' + time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '-';
-      tr.innerHTML =
+      var ev = o.events || {};
+      var eventsStr = ['metaPixel', 'gtm', 'tiktok', 'googleAds'].filter(function (k) { return ev[k]; }).join(', ') || '-';
+      var productsStr = (o.products && o.products.length)
+        ? o.products.map(function (p) { return (p.qty ? p.qty + 'x ' : '') + p.name; }).join(', ') : '-';
+      var cells =
         '<td>' + esc(timeStr) + '</td>' +
         '<td>' + esc(o.form || '-') + '</td>' +
         '<td><span class="badge ' + statusClass(o.status) + '">' + esc(o.status) + '</span></td>' +
@@ -114,8 +132,20 @@
         '<td>' + esc(o.workshop || '-') + '</td>' +
         '<td><span class="platform-pill ' + platformClass(o.platform) + '">' + esc(o.platform || '-') + '</span></td>' +
         '<td>' + esc(o.utm_campaign || o.campaignId || '-') + '</td>' +
-        '<td>' + esc(o.promo || '-') + '</td>' +
-        '<td><span class="row-actions"></span></td>';
+        '<td>' + esc(o.promo || '-') + '</td>';
+      if (showDetail) {
+        cells +=
+          '<td>' + esc(o.campaignId || '-') + '</td>' +
+          '<td>' + esc(o.adgroupId || '-') + '</td>' +
+          '<td>' + esc(o.adId || '-') + '</td>' +
+          '<td>' + esc(o.clickId || '-') + '</td>' +
+          '<td>' + esc(o.entityId || '-') + '</td>' +
+          '<td>' + (o.total ? 'Rp ' + Number(o.total).toLocaleString('id-ID') : '-') + '</td>' +
+          '<td>' + esc(o.notes || '-') + '</td>' +
+          '<td>' + esc(eventsStr) + '</td>';
+      }
+      cells += '<td><span class="row-actions"></span></td>';
+      tr.innerHTML = cells;
       var actions = tr.querySelector('.row-actions');
       actions.innerHTML =
         '<button class="btn ghost sm" data-act="view">Detail</button>' +
@@ -174,22 +204,27 @@
 
     $('#modal-body').innerHTML =
       '<div class="detail-section"><h4>Lead</h4><div class="detail-grid">' + gridHtml(grid) + '</div></div>' +
-      '<div class="detail-section"><h4>Produk / Layanan</h4><div class="val">' + esc(productsStr) + '</div><div class="val" style="margin-top:4px">Total: <strong>' + (o.total ? 'Rp ' + Number(o.total).toLocaleString('id-ID') : '-') + '</strong></div>' + (o.notes ? '<div class="val" style="margin-top:4px">Catatan: ' + esc(o.notes) + '</div>' : '') + '</div>' +
+      '<div class="detail-section"><h4>Produk / Layanan</h4><div class="val">' + esc(productsStr) + '</div><div class="val" style="margin-top:4px">Total: <strong>' + (o.total ? 'Rp ' + Number(o.total).toLocaleString('id-ID') : '-') + '</strong></div></div>' +
       '<div class="detail-section"><h4>Tracking</h4><div class="detail-grid">' + gridHtml(track) + '</div></div>' +
       '<div class="detail-section"><h4>Event Terkirim</h4><div class="val">' + esc(eventsStr) + '</div></div>' +
       '<div class="status-editor">' +
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">' +
       '<select id="detail-status" class="input">' +
-      ['Draft', 'Submitted', 'Confirmed', 'Paid', 'Cancelled'].map(function (s) {
+      STATUS_OPTIONS.map(function (s) {
         return '<option' + (s === o.status ? ' selected' : '') + '>' + s + '</option>';
       }).join('') +
       '</select>' +
       '<button class="btn primary sm" id="detail-save">Simpan Status</button>' +
+      '</div>' +
+      '<div class="detail-section" style="margin-top:12px"><h4>Catatan / Alasan</h4>' +
+      '<textarea id="detail-notes" class="input" style="width:100%;min-height:60px" placeholder="Tulis alasan / catatan follow-up CS di sini">' + esc(o.notes || '') + '</textarea></div>' +
       '</div>';
 
     $('#detail-save').addEventListener('click', function () {
       var status = $('#detail-status').value;
-      api('/api/orders/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: status }) })
-        .then(function () { toast('Status disimpan'); closeModal(); loadOrders(); renderStats(); });
+      var notes = $('#detail-notes').value.trim();
+      api('/api/orders/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: status, notes: notes }) })
+        .then(function () { toast('Status & catatan disimpan'); closeModal(); loadOrders(); renderStats(); });
     });
 
     $('#modal').classList.remove('hidden');
@@ -528,9 +563,14 @@
         debounceTimer = setTimeout(applyFilters, 250);
       });
     });
+    $('#f-detail').addEventListener('change', function () {
+      state.filters.showDetail = this.checked;
+      renderOrders();
+    });
     $('#btn-clear-filter').addEventListener('click', function () {
       state.filters = {};
       els.forEach(function (id) { $('#' + id).value = ''; });
+      $('#f-detail').checked = false;
       applyFilters();
     });
   }
