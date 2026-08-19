@@ -1,3 +1,4 @@
 {
-  "googleSheetWebAppUrl": ""
+  "googleSheetWebAppUrl": "",
+  "publicBaseUrl": ""
 }

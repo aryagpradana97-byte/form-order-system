@@ -323,18 +323,21 @@
     var lead = collectFields(container);
     var tracking = buildTracking();
 
+    var missing = null;
     if (isSubmit) {
-      var missing = validate(form, lead);
-      if (missing) { global.alert('Mohon lengkapi data wajib (' + missing + ').'); return; }
+      missing = validate(form, lead);
     } else {
       if (isEmpty(lead.nama) && isEmpty(lead.nohp)) return;
     }
 
+    // Valid + submitted => "Submitted" (sent). Everything else (draft or
+    // invalid submit) is still recorded, but as "Draft" (not sent).
+    var isSent = isSubmit && !missing;
     var payload = {
       sessionId: getSessionId() + '-' + formId.toUpperCase(),
       formId: form.id,
       formName: form.name,
-      status: isSubmit ? 'Submitted' : 'Draft',
+      status: isSent ? 'Submitted' : 'Draft',
       lead: lead,
       tracking: tracking,
       events: { metaPixel: !!form.tracking.metaPixel, gtm: !!form.tracking.gtm, tiktok: !!form.tracking.tiktok, googleAds: !!form.tracking.googleAds }
@@ -342,21 +345,27 @@
 
     sendToBackend(payload);
 
-    if (isSubmit) {
-      fireTracking(form, tracking, lead);
-      var btn = container.querySelector('button[type="submit"], button, [data-bcs-submit]');
-      var original = btn ? btn.innerHTML : '';
-      if (btn) btn.innerHTML = 'Memproses...';
-      global.setTimeout(function () {
-        if (btn) btn.innerHTML = original;
-        var wa = form.adminWa || cfg.adminWa;
-        if (form.submitAction === 'whatsapp' && wa) {
-          global.open('https://wa.me/' + wa.replace(/\D/g, '') + '?text=' + encodeURIComponent(buildWaMessage(form, tracking, lead)), '_blank');
-        } else if (form.submitAction === 'redirect' && form.redirectUrl) {
-          global.location.href = form.redirectUrl;
-        }
-      }, 400);
+    if (!isSubmit) return;
+
+    if (!isSent) {
+      global.alert('Mohon lengkapi data wajib (' + missing + ').');
+      return;
     }
+
+    // Tracking pixels fire ONLY for a valid, submitted form.
+    fireTracking(form, tracking, lead);
+    var btn = container.querySelector('button[type="submit"], button, [data-bcs-submit]');
+    var original = btn ? btn.innerHTML : '';
+    if (btn) btn.innerHTML = 'Memproses...';
+    global.setTimeout(function () {
+      if (btn) btn.innerHTML = original;
+      var wa = form.adminWa || cfg.adminWa;
+      if (form.submitAction === 'whatsapp' && wa) {
+        global.open('https://wa.me/' + wa.replace(/\D/g, '') + '?text=' + encodeURIComponent(buildWaMessage(form, tracking, lead)), '_blank');
+      } else if (form.submitAction === 'redirect' && form.redirectUrl) {
+        global.location.href = form.redirectUrl;
+      }
+    }, 400);
   }
 
   function wireAll() {

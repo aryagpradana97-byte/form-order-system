@@ -19,15 +19,17 @@ const PORT = process.env.PORT || 3000;
 
 /* Optional: mirror every submission to a NEW Google Sheet (via a NEW Apps
  * Script web app). Set GOOGLE_SHEET_WEBAPP_URL or config.json. */
-let CONFIG = { googleSheetWebAppUrl: '' };
+let CONFIG = { googleSheetWebAppUrl: '', publicBaseUrl: '' };
 try {
   CONFIG = Object.assign(CONFIG, JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8')));
 } catch (e) { /* no config.json yet */ }
 if (process.env.GOOGLE_SHEET_WEBAPP_URL) CONFIG.googleSheetWebAppUrl = process.env.GOOGLE_SHEET_WEBAPP_URL;
+if (process.env.PUBLIC_BASE_URL) CONFIG.publicBaseUrl = process.env.PUBLIC_BASE_URL;
 
 const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
 const FORMS_FILE = path.join(DATA_DIR, 'forms.json');
 const PRODUCTS_FILE = path.join(DATA_DIR, 'products.json');
+const PROMOS_FILE = path.join(DATA_DIR, 'promos.json');
 
 /* ------------------------------------------------------------------ *
  *  Canonical column order (used by CSV export so everything sits in  *
@@ -171,6 +173,12 @@ const SEED_PRODUCTS = [
   { id: 'p-ac', name: 'AC Recovery and Recharge', category: 'Service', price: 550000 }
 ];
 
+const SEED_PROMOS = [
+  { id: 'promo-meta-cabin', name: 'Cabin Air Treatment', platform: 'Meta Ads', code: 'CABIN', active: true, adminWa: '' },
+  { id: 'promo-google-wash', name: 'Car Wash', platform: 'Google Ads', code: 'WASH', active: true, adminWa: '' },
+  { id: 'promo-tiktok-ac', name: 'AC Recovery', platform: 'TikTok Ads', code: 'AC', active: true, adminWa: '' }
+];
+
 /* ------------------------------------------------------------------ *
  *  Storage helpers                                                    *
  * ------------------------------------------------------------------ */
@@ -179,6 +187,7 @@ function ensureDataFiles() {
   if (!fs.existsSync(FORMS_FILE)) writeJson(FORMS_FILE, SEED_FORMS);
   if (!fs.existsSync(ORDERS_FILE)) writeJson(ORDERS_FILE, SEED_ORDERS);
   if (!fs.existsSync(PRODUCTS_FILE)) writeJson(PRODUCTS_FILE, SEED_PRODUCTS);
+  if (!fs.existsSync(PROMOS_FILE)) writeJson(PROMOS_FILE, SEED_PROMOS);
 }
 
 function readJson(file) {
@@ -196,9 +205,11 @@ function writeJson(file, data) {
 function readForms() { return readJson(FORMS_FILE); }
 function readOrders() { return readJson(ORDERS_FILE); }
 function readProducts() { return readJson(PRODUCTS_FILE); }
+function readPromos() { return readJson(PROMOS_FILE); }
 function writeForms(f) { writeJson(FORMS_FILE, f); }
 function writeOrders(o) { writeJson(ORDERS_FILE, o); }
 function writeProducts(p) { writeJson(PRODUCTS_FILE, p); }
+function writePromos(p) { writeJson(PROMOS_FILE, p); }
 
 /* ------------------------------------------------------------------ *
  *  Helpers                                                            *
@@ -469,6 +480,83 @@ function apiDeleteProduct(id) {
 }
 
 /* ------------------------------------------------------------------ *
+ *  Promos + form generation                                            *
+ * ------------------------------------------------------------------ */
+function platformDefaults(platform) {
+  const p = String(platform || '').toLowerCase();
+  if (p.indexOf('meta') > -1 || p.indexOf('fb') > -1 || p.indexOf('facebook') > -1 || p.indexOf('instagram') > -1) {
+    return { metaPixel: true, gtm: false, tiktok: false, googleAds: false };
+  }
+  if (p.indexOf('tiktok') > -1) return { metaPixel: false, gtm: false, tiktok: true, googleAds: false };
+  if (p.indexOf('google') > -1) return { metaPixel: false, gtm: false, tiktok: false, googleAds: true };
+  if (p.indexOf('microsoft') > -1 || p.indexOf('bing') > -1) return { metaPixel: false, gtm: true, tiktok: false, googleAds: false };
+  return { metaPixel: false, gtm: true, tiktok: false, googleAds: false };
+}
+
+function apiSavePromo(body, id) {
+  const promos = readPromos();
+  let p;
+  if (id) {
+    p = promos.find((x) => x.id === id);
+    if (!p) return { error: 'promo not found' };
+    Object.assign(p, body, { id });
+  } else {
+    p = Object.assign({ id: newId('promo'), name: 'Promo Baru', platform: 'Meta Ads', code: '', active: true, adminWa: '' }, body);
+    promos.push(p);
+  }
+  writePromos(promos);
+  return { ok: true, promo: p };
+}
+
+function apiDeletePromo(id) {
+  let promos = readPromos();
+  promos = promos.filter((x) => x.id !== id);
+  writePromos(promos);
+  return { ok: true };
+}
+
+/* Generate short + full forms for a promo (each with independent tracking). */
+function apiGenerateForms(promoId) {
+  const promos = readPromos();
+  const promo = promos.find((p) => p.id === promoId);
+  if (!promo) return { error: 'promo not found' };
+
+  const forms = readForms();
+  const defaults = platformDefaults(promo.platform);
+  const results = [];
+
+  [['short', 'Short'], ['long', 'Full']].forEach((pair) => {
+    const type = pair[0];
+    const label = pair[1];
+    const fid = promo.id + '-' + type;
+    const existing = forms.find((f) => f.id === fid);
+    if (existing) {
+      existing.name = promo.name + ' — ' + label;
+      existing.enabled = true;
+      existing.tracking = Object.assign({}, existing.tracking, defaults);
+      if (promo.adminWa) existing.adminWa = promo.adminWa;
+      existing.promoId = promo.id;
+      existing.platform = promo.platform;
+      results.push(existing);
+    } else {
+      const form = {
+        id: fid, name: promo.name + ' — ' + label, type: type, enabled: true,
+        adminWa: promo.adminWa || '',
+        tracking: Object.assign({}, defaults),
+        pixelIds: { metaPixel: '', gtm: '', tiktok: '' },
+        submitAction: 'whatsapp', redirectUrl: '',
+        promoId: promo.id, platform: promo.platform
+      };
+      forms.push(form);
+      results.push(form);
+    }
+  });
+
+  writeForms(forms);
+  return { ok: true, forms: results };
+}
+
+/* ------------------------------------------------------------------ *
  *  Static file server                                                 *
  * ------------------------------------------------------------------ */
 const MIME = {
@@ -571,6 +659,27 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname === '/api/products' && method === 'DELETE') {
       return send(res, 200, apiDeleteProduct(reqUrl.searchParams.get('id') || ''));
+    }
+
+    if (pathname === '/api/promos' && method === 'GET') {
+      return send(res, 200, { promos: readPromos() });
+    }
+    if (pathname === '/api/promos/generate' && method === 'POST') {
+      const body = await readBody(req);
+      return send(res, 200, apiGenerateForms(body.promoId || ''));
+    }
+    if (pathname === '/api/promos' && method === 'POST') {
+      const body = await readBody(req);
+      return send(res, 200, apiSavePromo(body, reqUrl.searchParams.get('id') || null));
+    }
+    if (pathname === '/api/promos' && method === 'DELETE') {
+      return send(res, 200, apiDeletePromo(reqUrl.searchParams.get('id') || ''));
+    }
+
+    if (pathname === '/api/config' && method === 'GET') {
+      const proto = req.headers['x-forwarded-proto'] || 'http';
+      const publicBaseUrl = CONFIG.publicBaseUrl || (proto + '://' + req.headers.host);
+      return send(res, 200, { publicBaseUrl: publicBaseUrl.replace(/\/$/, ''), googleSheetConfigured: !!CONFIG.googleSheetWebAppUrl });
     }
 
     return serveStatic(res, pathname);

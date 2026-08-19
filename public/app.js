@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var state = { orders: [], forms: [], products: [], filters: {} };
+  var state = { orders: [], forms: [], products: [], promos: [], filters: {}, publicBaseUrl: '' };
   var debounceTimer = null;
 
   function $(sel) { return document.querySelector(sel); }
@@ -256,12 +256,14 @@
         '<div class="toggle-row"><span>Form Aktif</span>' +
         '<label class="toggle"><input type="checkbox" data-f="enabled"' + (f.enabled ? ' checked' : '') + '><span class="slider"></span></label></div>' +
         '<div class="form-card-actions">' +
+        '<button class="btn ghost" data-act="embed">Copy Embed</button>' +
         '<button class="btn primary" data-act="save">Simpan</button>' +
         '<button class="btn danger" data-act="del">Hapus</button>' +
         '</div>';
 
       card.querySelector('[data-act="save"]').addEventListener('click', function () { saveForm(f.id, card); });
       card.querySelector('[data-act="del"]').addEventListener('click', function () { deleteForm(f.id); });
+      card.querySelector('[data-act="embed"]').addEventListener('click', function () { openEmbed(f.id); });
       list.appendChild(card);
     });
   }
@@ -349,6 +351,138 @@
     api('/api/products?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(function () { toast('Produk dihapus'); loadProducts(); });
   }
 
+  /* --------------------------- Promos ------------------------------ */
+  function loadPromos() {
+    return api('/api/promos').then(function (d) {
+      state.promos = d.promos || [];
+      renderPromos();
+    });
+  }
+
+  function renderPromos() {
+    var list = $('#promos-list');
+    if (!list) return;
+    list.innerHTML = '';
+    state.promos.forEach(function (p) {
+      var card = document.createElement('div');
+      card.className = 'form-card';
+      card.dataset.id = p.id;
+      var forms = state.forms.filter(function (f) { return f.promoId === p.id || f.id.indexOf(p.id) === 0; });
+      var genRows = forms.length
+        ? forms.map(function (f) {
+          return '<div class="gen-form-row"><span class="tname">' + esc(f.name) + ' <span class="badge ' + (f.type === 'long' ? 'confirmed' : 'submitted') + '">' + (f.type === 'long' ? 'Full' : f.type) + '</span></span>' +
+            '<button class="btn ghost sm" data-embed="' + esc(f.id) + '">Copy Embed</button></div>';
+        }).join('')
+        : '<div class="gen-form-row" style="color:#6b7686">Belum ada form. Klik "Generate Short + Full".</div>';
+      card.innerHTML =
+        '<div class="form-card-head"><h3>' + esc(p.name) + '</h3><span class="promo-platform">' + esc(p.platform) + '</span></div>' +
+        '<div class="form-field"><label>Nama Promo</label><input type="text" data-promo="name" value="' + esc(p.name) + '" /></div>' +
+        '<div class="form-field"><label>Platform</label><input type="text" data-promo="platform" value="' + esc(p.platform) + '" list="platform-list" /></div>' +
+        '<div class="form-field"><label>Kode Promo (opsional)</label><input type="text" data-promo="code" value="' + esc(p.code || '') + '" /></div>' +
+        '<div class="form-field"><label>Admin WhatsApp (opsional)</label><input type="text" data-promo="adminWa" value="' + esc(p.adminWa || '') + '" /></div>' +
+        '<div class="form-card-actions"><button class="btn ghost" data-gen="' + esc(p.id) + '">⚡ Generate Short + Full</button>' +
+        '<button class="btn primary" data-save="' + esc(p.id) + '">Simpan</button>' +
+        '<button class="btn danger" data-del="' + esc(p.id) + '">Hapus</button></div>' +
+        '<div class="gen-forms"><h5>Form Promo ini</h5>' + genRows + '</div>';
+      card.querySelector('[data-save]').addEventListener('click', function () { savePromo(p.id, card); });
+      card.querySelector('[data-del]').addEventListener('click', function () { deletePromo(p.id); });
+      card.querySelector('[data-gen]').addEventListener('click', function () { generateForms(p.id); });
+      card.querySelectorAll('[data-embed]').forEach(function (b) { b.addEventListener('click', function () { openEmbed(b.getAttribute('data-embed')); }); });
+      list.appendChild(card);
+    });
+  }
+
+  function savePromo(id, card) {
+    var body = {
+      id: id,
+      name: card.querySelector('[data-promo="name"]').value,
+      platform: card.querySelector('[data-promo="platform"]').value,
+      code: card.querySelector('[data-promo="code"]').value,
+      adminWa: card.querySelector('[data-promo="adminWa"]').value
+    };
+    api('/api/promos?id=' + encodeURIComponent(id), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+      .then(function () { toast('Promo disimpan'); loadPromos(); });
+  }
+
+  function addPromo() {
+    var id = 'promo-' + Date.now().toString(36);
+    api('/api/promos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, name: 'Promo Baru', platform: 'Meta Ads', code: '', active: true, adminWa: '' }) })
+      .then(function () { toast('Promo ditambahkan'); loadPromos(); });
+  }
+
+  function deletePromo(id) {
+    if (!confirm('Hapus promo ini? (form-nya tetap ada)')) return;
+    api('/api/promos?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(function () { toast('Promo dihapus'); loadPromos(); });
+  }
+
+  function generateForms(promoId) {
+    api('/api/promos/generate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ promoId: promoId }) })
+      .then(function () { toast('Form Short + Full dibuat'); loadForms().then(loadPromos); });
+  }
+
+  /* --------------------------- Embed code -------------------------- */
+  function selectField(name, label, placeholder) {
+    return '<div style="margin-bottom:12px"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;color:#333">' + esc(label) + '</label>' +
+      '<input name="' + name + '" type="text" placeholder="' + esc(placeholder || '') + '" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:5px;box-sizing:border-box"/></div>';
+  }
+  function textField(name, label, placeholder) {
+    return '<div style="margin-bottom:12px"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;color:#333">' + esc(label) + '</label>' +
+      '<select name="' + name + '" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:5px;box-sizing:border-box">' +
+      '<option value="" disabled selected>-- Pilih Cabang --</option><option>Kelapa Gading</option><option>PIK2</option></select></div>';
+  }
+
+  function buildEmbedHtml(form) {
+    var base = state.publicBaseUrl || 'http://localhost:3000';
+    var wa = form.adminWa || '';
+    var body = '';
+    if (form.type === 'direct') {
+      body = '<button type="button" data-bcs-form="' + esc(form.id) + '" style="padding:14px 24px;background:#25D366;color:#fff;border:none;border-radius:50px;font-size:16px;font-weight:bold;cursor:pointer">💬 Konsultasi via WhatsApp</button>';
+    } else {
+      body = selectField('nama', 'Nama Lengkap', 'Contoh: Budi Santoso') +
+        selectField('nohp', 'Nomor WhatsApp', '0812...');
+      if (form.type === 'long') {
+        body += selectField('plat', 'Plat Nomor', 'B 1234 ABC') + selectField('mobil', 'Merek & Tipe Mobil', 'Honda HR-V') + textField('workshop', 'Lokasi Bengkel') +
+          selectField('keluhan', 'Keluhan / Layanan', 'Opsional');
+      } else if (form.type === 'short') {
+        body += textField('workshop', 'Lokasi Bengkel');
+      } else if (form.type === 'order') {
+        body += textField('workshop', 'Lokasi Bengkel') + '<div id="fo-products" style="margin-bottom:12px"></div>';
+      }
+      body += '<button type="submit" style="width:100%;padding:13px;background:#25D366;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:bold;cursor:pointer">Kirim via WhatsApp</button>';
+    }
+
+    var formConfig = {
+      id: form.id, name: form.name, type: form.type,
+      adminWa: wa, submitAction: form.submitAction || 'whatsapp', redirectUrl: form.redirectUrl || '',
+      tracking: form.tracking || { metaPixel: false, gtm: false, tiktok: false, googleAds: false }
+    };
+
+    var orderScript = '';
+    if (form.type === 'order') {
+      orderScript = '\n<script>\n(function(){var b=document.getElementById("fo-products");if(!b)return;fetch("' + base + '/api/products").then(function(r){return r.json()}).then(function(d){(d.products||[]).forEach(function(p){var l=document.createElement("label");l.style.cssText="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px";l.innerHTML=\'<input type="checkbox" data-product="\'+p.id+\'" data-name="\'+p.name+\'" data-price="\'+p.price+\'"/><span>\'+p.name+\'</span><input type="number" data-qty="\'+p.id+\'" value="1" min="1" style="width:52px;padding:5px"/> \';b.appendChild(l);})}).catch(function(){});})();\n</scr' + 'ipt>';
+    }
+
+    var open = form.type === 'direct' ? body : '<form data-bcs-form="' + esc(form.id) + '" style="font-family:Arial,sans-serif;max-width:420px">' + body + '</form>';
+
+    return '<!-- Form Order: ' + esc(form.name) + ' -->\n' + open +
+      '\n<script>\nwindow.BCS_CONFIG = { scriptUrl: "' + base + '/api/track' + '", adminWa: "' + esc(wa) + '", forms: { "' + esc(form.id) + '": ' + JSON.stringify(formConfig) + ' } };\n</scr' + 'ipt>' +
+      '\n<script src="' + base + '/tracker/bcs-tracker.js"><\/scr' + 'ipt>' + orderScript;
+  }
+
+  function openEmbed(formId) {
+    var form = state.forms.find(function (f) { return f.id === formId; });
+    if (!form) return;
+    $('#embed-title').textContent = 'Embed — ' + form.name;
+    $('#embed-code').value = buildEmbedHtml(form);
+    $('#embed-modal').classList.remove('hidden');
+  }
+
+  function copyEmbed() {
+    var ta = $('#embed-code');
+    ta.select();
+    try { document.execCommand('copy'); toast('Kode di-copy'); } catch (e) { toast('Gagal copy, pilih manual'); }
+  }
+
   /* ----------------------- Add order modal ------------------------- */
   function openAddOrder() {
     $('#add-modal-body').dataset.mode = 'add';
@@ -425,11 +559,15 @@
     $('#btn-export').addEventListener('click', exportCsv);
     $('#btn-add-form').addEventListener('click', addForm);
     $('#btn-add-product').addEventListener('click', addProduct);
+    $('#btn-add-promo').addEventListener('click', addPromo);
     $('#btn-add-order').addEventListener('click', openAddOrder);
     $('#add-modal-close').addEventListener('click', function () { $('#add-modal').classList.add('hidden'); });
     $('#ao-cancel').addEventListener('click', function () { $('#add-modal').classList.add('hidden'); });
     $('#ao-save').addEventListener('click', saveAddOrder);
     $('#add-modal').addEventListener('click', function (e) { if (e.target === this) this.classList.add('hidden'); });
+    $('#embed-modal-close').addEventListener('click', function () { $('#embed-modal').classList.add('hidden'); });
+    $('#embed-copy').addEventListener('click', copyEmbed);
+    $('#embed-modal').addEventListener('click', function (e) { if (e.target === this) this.classList.add('hidden'); });
     bindFilters();
 
     api('/api/health').then(function () {
@@ -445,6 +583,11 @@
     renderPlatformFilter();
     loadForms();
     loadProducts();
+    loadPromos();
+
+    api('/api/config').then(function (c) {
+      if (c.publicBaseUrl) state.publicBaseUrl = c.publicBaseUrl;
+    }).catch(function () {});
   }
 
   document.addEventListener('DOMContentLoaded', init);
