@@ -304,11 +304,17 @@
       '<span class="slider"></span></label></div>';
   }
 
+  function pixelField(key, label, placeholder, value) {
+    return '<div class="form-field"><label>' + esc(label) + '</label>' +
+      '<input type="text" data-px="' + esc(key) + '" value="' + esc(value || '') + '" placeholder="' + esc(placeholder || '') + '" /></div>';
+  }
+
   function renderForms() {
     var list = $('#forms-list');
     list.innerHTML = '';
     state.forms.forEach(function (f) {
       var t = f.tracking || {};
+      var px = f.pixelIds || {};
       var card = document.createElement('div');
       card.className = 'form-card';
       card.dataset.id = f.id;
@@ -324,6 +330,13 @@
         trackingToggle('gtm', 'Google Tag Manager', t.gtm) +
         trackingToggle('tiktok', 'TikTok Pixel', t.tiktok) +
         trackingToggle('googleAds', 'Google Ads (gtag)', t.googleAds) +
+        '<div class="pixel-fields">' +
+        '<h5>Pixel IDs (optional)</h5>' +
+        pixelField('metaPixel', 'Meta Pixel ID', 'e.g. 123456789', px.metaPixel) +
+        pixelField('tiktok', 'TikTok Pixel ID', 'e.g. ABCDEF123', px.tiktok) +
+        pixelField('gtm', 'GTM Container ID', 'e.g. GTM-XXXXXXX', px.gtm) +
+        pixelField('googleAds', 'Google Ads Conversion ID/Label', 'e.g. AW-123456/AbCdEf', px.googleAds) +
+        '</div>' +
         '<div class="toggle-row"><span>Active</span>' +
         '<label class="toggle"><input type="checkbox" data-f="enabled"' + (f.enabled ? ' checked' : '') + '><span class="slider"></span></label></div>' +
         '<div class="form-card-actions">' +
@@ -342,13 +355,16 @@
   function saveForm(id, card) {
     var tracking = {};
     card.querySelectorAll('[data-t]').forEach(function (cb) { tracking[cb.dataset.t] = cb.checked; });
+    var pixelIds = {};
+    card.querySelectorAll('[data-px]').forEach(function (inp) { pixelIds[inp.dataset.px] = inp.value.trim(); });
     var body = {
       id: id,
       name: card.querySelector('[data-f="name"]').value,
       type: card.querySelector('[data-f="type"]').value,
       adminWa: card.querySelector('[data-f="adminWa"]').value,
       enabled: card.querySelector('[data-f="enabled"]').checked,
-      tracking: tracking
+      tracking: tracking,
+      pixelIds: pixelIds
     };
     api('/api/forms?id=' + encodeURIComponent(id), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
@@ -525,7 +541,8 @@
     var formConfig = {
       id: form.id, name: form.name, type: form.type,
       adminWa: wa, submitAction: form.submitAction || 'whatsapp', redirectUrl: form.redirectUrl || '',
-      tracking: form.tracking || { metaPixel: false, gtm: false, tiktok: false, googleAds: false }
+      tracking: form.tracking || { metaPixel: false, gtm: false, tiktok: false, googleAds: false },
+      pixelIds: form.pixelIds || { metaPixel: '', gtm: '', tiktok: '', googleAds: '' }
     };
 
     var orderScript = '';

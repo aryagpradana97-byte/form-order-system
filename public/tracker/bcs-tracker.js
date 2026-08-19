@@ -156,7 +156,7 @@
       enabled: true,
       adminWa: cfg.adminWa,
       tracking: { metaPixel: false, gtm: false, tiktok: false, googleAds: false },
-      pixelIds: { metaPixel: '', gtm: '', tiktok: '' },
+      pixelIds: { metaPixel: '', gtm: '', tiktok: '', googleAds: '' },
       submitAction: 'whatsapp',
       redirectUrl: ''
     };
@@ -215,22 +215,44 @@
     };
 
     if (trk.metaPixel) {
-      try { if (global.fbq) global.fbq('track', 'Lead', data); } catch (e) {}
+      try {
+        if (global.fbq) {
+          if (ids.metaPixel) global.fbq('trackSinglePixel', ids.metaPixel, 'Lead', data);
+          else global.fbq('track', 'Lead', data);
+        }
+      } catch (e) {}
     }
     if (trk.tiktok) {
-      try { if (global.ttq) global.ttq.track('SubmitForm', data); } catch (e) {}
+      try {
+        if (global.ttq) {
+          if (ids.tiktok) global.ttq.instance(ids.tiktok).track('SubmitForm', data);
+          else global.ttq.track('SubmitForm', data);
+        }
+      } catch (e) {}
     }
     if (trk.gtm) {
       try {
+        if (ids.gtm) ensureGtm(ids.gtm);
         global.dataLayer = global.dataLayer || [];
-        global.dataLayer.push({ event: 'bcs_form_submit', form_id: form.id, form_name: form.name, platform: tracking.platform });
+        global.dataLayer.push({ event: 'bcs_form_submit', form_id: form.id, form_name: form.name, platform: tracking.platform, value: data.value, currency: data.currency });
       } catch (e) {}
     }
     if (trk.googleAds) {
       try {
-        if (global.gtag) global.gtag('event', 'conversion', { send_to: ids.metaPixel ? undefined : undefined, value: lead.value || undefined, currency: 'IDR' });
+        if (global.gtag) global.gtag('event', 'conversion', { send_to: ids.googleAds || undefined, value: data.value || undefined, currency: 'IDR' });
       } catch (e) {}
     }
+  }
+
+  function ensureGtm(id) {
+    if (!id || global.document.getElementById('bcs-gtm')) return;
+    global.dataLayer = global.dataLayer || [];
+    global.dataLayer.push({ 'gtm.start': new Date().getTime(), event: 'gtm.js' });
+    var s = global.document.createElement('script');
+    s.id = 'bcs-gtm';
+    s.async = true;
+    s.src = 'https://www.googletagmanager.com/gtm.js?id=' + encodeURIComponent(id);
+    global.document.head.appendChild(s);
   }
 
   /* ------------------------------------------------------------------ *

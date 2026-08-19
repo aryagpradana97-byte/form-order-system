@@ -61,7 +61,7 @@ const SEED_FORMS = [
     enabled: true,
     adminWa: '6282225678919',
     tracking: { metaPixel: true, gtm: true, tiktok: true, googleAds: true },
-    pixelIds: { metaPixel: '', gtm: '', tiktok: '' },
+    pixelIds: { metaPixel: '', gtm: '', tiktok: '', googleAds: '' },
     submitAction: 'whatsapp',
     redirectUrl: ''
   },
@@ -72,7 +72,7 @@ const SEED_FORMS = [
     enabled: true,
     adminWa: '6282225678919',
     tracking: { metaPixel: true, gtm: false, tiktok: true, googleAds: true },
-    pixelIds: { metaPixel: '', gtm: '', tiktok: '' },
+    pixelIds: { metaPixel: '', gtm: '', tiktok: '', googleAds: '' },
     submitAction: 'whatsapp',
     redirectUrl: ''
   },
@@ -83,7 +83,7 @@ const SEED_FORMS = [
     enabled: true,
     adminWa: '6282225678919',
     tracking: { metaPixel: true, gtm: false, tiktok: false, googleAds: false },
-    pixelIds: { metaPixel: '', gtm: '', tiktok: '' },
+    pixelIds: { metaPixel: '', gtm: '', tiktok: '', googleAds: '' },
     submitAction: 'whatsapp',
     redirectUrl: ''
   },
@@ -94,7 +94,7 @@ const SEED_FORMS = [
     enabled: true,
     adminWa: '6282225678919',
     tracking: { metaPixel: true, gtm: true, tiktok: true, googleAds: true },
-    pixelIds: { metaPixel: '', gtm: '', tiktok: '' },
+    pixelIds: { metaPixel: '', gtm: '', tiktok: '', googleAds: '' },
     submitAction: 'whatsapp',
     redirectUrl: ''
   }
@@ -398,7 +398,7 @@ function apiSaveForm(body, id) {
       id: newId('form'),
       name: 'Untitled Form', type: 'short', enabled: true,
       adminWa: '', tracking: { metaPixel: false, gtm: false, tiktok: false, googleAds: false },
-      pixelIds: { metaPixel: '', gtm: '', tiktok: '' }, submitAction: 'whatsapp', redirectUrl: ''
+      pixelIds: { metaPixel: '', gtm: '', tiktok: '', googleAds: '' }, submitAction: 'whatsapp', redirectUrl: ''
     }, body);
     forms.push(form);
   }
@@ -543,7 +543,7 @@ function apiGenerateForms(promoId) {
         id: fid, name: promo.name + ' — ' + label, type: type, enabled: true,
         adminWa: promo.adminWa || '',
         tracking: Object.assign({}, defaults),
-        pixelIds: { metaPixel: '', gtm: '', tiktok: '' },
+        pixelIds: { metaPixel: '', gtm: '', tiktok: '', googleAds: '' },
         submitAction: 'whatsapp', redirectUrl: '',
         promoId: promo.id, platform: promo.platform
       };
