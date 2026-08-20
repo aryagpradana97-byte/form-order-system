@@ -312,6 +312,63 @@
       '<input type="text" data-px="' + esc(key) + '" value="' + esc(value || '') + '" placeholder="' + esc(placeholder || '') + '" /></div>';
   }
 
+  // --- editable fields helpers ---
+  function getDefaultFields(type) {
+    if (type === 'direct') return [];
+    if (type === 'long') return [
+      { name: 'nama', label: 'Nama Lengkap', type: 'text', placeholder: 'Contoh: Budi Santoso', required: true, options: '' },
+      { name: 'nohp', label: 'Nomor WhatsApp', type: 'tel', placeholder: '081234567890', required: true, options: '' },
+      { name: 'plat', label: 'Plat Nomor', type: 'text', placeholder: 'B 1234 ABC', required: false, options: '' },
+      { name: 'mobil', label: 'Merek & Tipe Mobil', type: 'text', placeholder: 'Honda HR-V', required: false, options: '' },
+      { name: 'workshop', label: 'Lokasi Bengkel', type: 'select', placeholder: '-- Pilih Cabang --', required: true, options: 'Kelapa Gading, PIK2' },
+      { name: 'keluhan', label: 'Keluhan / Layanan', type: 'text', placeholder: 'Opsional', required: false, options: '' }
+    ];
+    if (type === 'order') return [
+      { name: 'nama', label: 'Nama Lengkap', type: 'text', placeholder: 'Contoh: Budi Santoso', required: true, options: '' },
+      { name: 'nohp', label: 'Nomor WhatsApp', type: 'tel', placeholder: '081234567890', required: true, options: '' },
+      { name: 'workshop', label: 'Lokasi Bengkel', type: 'select', placeholder: '-- Pilih Cabang --', required: true, options: 'Kelapa Gading, PIK2' }
+    ];
+    // short default
+    return [
+      { name: 'nama', label: 'Nama Lengkap', type: 'text', placeholder: 'Contoh: Budi Santoso', required: true, options: '' },
+      { name: 'nohp', label: 'Nomor WhatsApp', type: 'tel', placeholder: '081234567890', required: true, options: '' },
+      { name: 'workshop', label: 'Lokasi Bengkel', type: 'select', placeholder: '-- Pilih Cabang --', required: true, options: 'Kelapa Gading, PIK2' }
+    ];
+  }
+  function normalizeFields(form) {
+    if (Array.isArray(form.fields)) return form.fields;
+    return getDefaultFields(form.type);
+  }
+  function fieldRowHtml(f) {
+    var opts = Array.isArray(f.options) ? f.options.join(', ') : (f.options || '');
+    return '<div class="field-row" style="border:1px solid #e4e8ee;padding:10px;border-radius:6px;margin-bottom:8px;background:#f9fafb">' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">' +
+      '<div class="form-field"><label>Label</label><input type="text" data-ff="label" value="' + esc(f.label || '') + '" placeholder="Nama" /></div>' +
+      '<div class="form-field"><label>Name (key)</label><input type="text" data-ff="name" value="' + esc(f.name || '') + '" placeholder="nama" /></div>' +
+      '<div class="form-field"><label>Tipe</label><select data-ff="type"><option value="text"' + (f.type === 'text' ? ' selected' : '') + '>text</option><option value="tel"' + (f.type === 'tel' ? ' selected' : '') + '>tel</option><option value="number"' + (f.type === 'number' ? ' selected' : '') + '>number</option><option value="select"' + (f.type === 'select' ? ' selected' : '') + '>select (dropdown)</option><option value="textarea"' + (f.type === 'textarea' ? ' selected' : '') + '>textarea</option></select></div>' +
+      '<div class="form-field"><label>Placeholder</label><input type="text" data-ff="placeholder" value="' + esc(f.placeholder || '') + '" /></div>' +
+      '<div class="form-field" style="grid-column:1 / -1"><label>Opsi dropdown (pisah koma) — hanya untuk tipe select</label><input type="text" data-ff="options" value="' + esc(opts) + '" placeholder="Kelapa Gading, PIK2, Bekasi" /></div>' +
+      '<div class="form-field"><label><input type="checkbox" data-ff="required"' + (f.required ? ' checked' : '') + '> Wajib isi</label></div>' +
+      '</div>' +
+      '<div style="margin-top:8px;display:flex;gap:8px"><button class="btn ghost sm" data-act="field-up">⬆ Naik</button><button class="btn ghost sm" data-act="field-down">⬇ Turun</button><button class="btn danger sm" data-act="field-del">Hapus</button></div>' +
+      '</div>';
+  }
+  function collectFieldsFromCard(card) {
+    var rows = card.querySelectorAll('.field-row');
+    var out = [];
+    rows.forEach(function (row) {
+      var label = row.querySelector('[data-ff="label"]').value.trim();
+      var name = row.querySelector('[data-ff="name"]').value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') || 'field';
+      var type = row.querySelector('[data-ff="type"]').value;
+      var placeholder = row.querySelector('[data-ff="placeholder"]').value.trim();
+      var options = row.querySelector('[data-ff="options"]').value.trim();
+      var required = row.querySelector('[data-ff="required"]').checked;
+      if (!label) return;
+      out.push({ name: name, label: label, type: type, placeholder: placeholder, required: required, options: options });
+    });
+    return out;
+  }
+
   function renderForms() {
     var list = $('#forms-list');
     list.innerHTML = '';
@@ -342,11 +399,42 @@
         '</div>' +
         '<div class="toggle-row"><span>Active</span>' +
         '<label class="toggle"><input type="checkbox" data-f="enabled"' + (f.enabled ? ' checked' : '') + '><span class="slider"></span></label></div>' +
+        // editable fields section (hide for direct)
+        '<div class="field-settings" style="' + (f.type === 'direct' ? 'display:none' : '') + '">' +
+        '<h5 style="margin:16px 0 8px">✏️ Field Settings — atur field yang tampil</h5>' +
+        '<div data-field-list>' + normalizeFields(f).map(fieldRowHtml).join('') + '</div>' +
+        '<button class="btn ghost sm" data-act="add-field" style="margin-top:6px">＋ Tambah Field</button>' +
+        '<p class="sub" style="margin-top:6px;font-size:11px;color:#6b7686">Dropdown: pilih Tipe = select dan isi Opsi dengan koma — contoh: <code>Kelapa Gading, PIK2, Bekasi</code>. Name harus huruf kecil tanpa spasi.</p>' +
+        '</div>' +
         '<div class="form-card-actions">' +
         '<button class="btn ghost" data-act="embed">Copy Embed</button>' +
         '<button class="btn primary" data-act="save">Save</button>' +
         '<button class="btn danger" data-act="del">Delete</button>' +
         '</div>';
+
+      // field editor wiring
+      var fieldList = card.querySelector('[data-field-list]');
+      if (fieldList) {
+        card.querySelector('[data-act="add-field"]').addEventListener('click', function () {
+          var tmp = document.createElement('div');
+          tmp.innerHTML = fieldRowHtml({ name: 'field' + Date.now().toString(36).slice(-4), label: 'Field Baru', type: 'text', placeholder: '', required: false, options: '' });
+          fieldList.appendChild(tmp.firstElementChild);
+        });
+        fieldList.addEventListener('click', function (e) {
+          var btn = e.target.closest('[data-act="field-del"],[data-act="field-up"],[data-act="field-down"]');
+          if (!btn) return;
+          var row = btn.closest('.field-row');
+          if (btn.getAttribute('data-act') === 'field-del') { if (confirm('Hapus field ini?')) row.remove(); }
+          if (btn.getAttribute('data-act') === 'field-up' && row.previousElementSibling) fieldList.insertBefore(row, row.previousElementSibling);
+          if (btn.getAttribute('data-act') === 'field-down' && row.nextElementSibling) fieldList.insertBefore(row.nextElementSibling, row);
+        });
+        // hide/show on type change
+        var typeSel = card.querySelector('[data-f="type"]');
+        typeSel.addEventListener('change', function () {
+          var fs = card.querySelector('.field-settings');
+          fs.style.display = (typeSel.value === 'direct' ? 'none' : '');
+        });
+      }
 
       card.querySelector('[data-act="save"]').addEventListener('click', function () { saveForm(f.id, card); });
       card.querySelector('[data-act="del"]').addEventListener('click', function () { deleteForm(f.id); });
@@ -360,6 +448,7 @@
     card.querySelectorAll('[data-t]').forEach(function (cb) { tracking[cb.dataset.t] = cb.checked; });
     var pixelIds = {};
     card.querySelectorAll('[data-px]').forEach(function (inp) { pixelIds[inp.dataset.px] = inp.value.trim(); });
+    var fields = collectFieldsFromCard(card);
     var body = {
       id: id,
       name: card.querySelector('[data-f="name"]').value,
@@ -367,7 +456,8 @@
       adminWa: card.querySelector('[data-f="adminWa"]').value,
       enabled: card.querySelector('[data-f="enabled"]').checked,
       tracking: tracking,
-      pixelIds: pixelIds
+      pixelIds: pixelIds,
+      fields: fields
     };
     api('/api/forms?id=' + encodeURIComponent(id), {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
@@ -520,6 +610,27 @@
       '<select name="' + name + '" style="width:100%;padding:10px;border:1px solid #ccc;border-radius:5px;box-sizing:border-box">' +
       '<option value="" disabled selected>-- Pilih Cabang --</option><option>Kelapa Gading</option><option>PIK2</option></select></div>';
   }
+  function fieldToEmbedHtml(f) {
+    var opts = (f.options || '').split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+    var req = f.required ? ' required' : '';
+    var label = esc(f.label || f.name);
+    var name = esc(f.name);
+    var ph = esc(f.placeholder || '');
+    if (f.type === 'select') {
+      var optHtml = '<option value="" disabled selected>' + (ph ? ph : '-- Pilih ' + label + ' --') + '</option>' +
+        opts.map(function (o) { return '<option>' + esc(o) + '</option>'; }).join('');
+      return '<div style="margin-bottom:12px"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;color:#333">' + label + (f.required ? ' *' : '') + '</label>' +
+        '<select name="' + name + '"' + req + ' style="width:100%;padding:10px;border:1px solid #ccc;border-radius:5px;box-sizing:border-box">' + optHtml + '</select></div>';
+    }
+    if (f.type === 'textarea') {
+      return '<div style="margin-bottom:12px"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;color:#333">' + label + (f.required ? ' *' : '') + '</label>' +
+        '<textarea name="' + name + '" placeholder="' + ph + '"' + req + ' style="width:100%;padding:10px;border:1px solid #ccc;border-radius:5px;box-sizing:border-box;min-height:70px"></textarea></div>';
+    }
+    var inputType = (f.type === 'tel' ? 'tel' : f.type === 'number' ? 'number' : 'text');
+    var extra = (f.name === 'plat' ? ' style="width:100%;padding:10px;border:1px solid #ccc;border-radius:5px;box-sizing:border-box;text-transform:uppercase"' : ' style="width:100%;padding:10px;border:1px solid #ccc;border-radius:5px;box-sizing:border-box"');
+    return '<div style="margin-bottom:12px"><label style="display:block;font-weight:600;margin-bottom:4px;font-size:13px;color:#333">' + label + (f.required ? ' *' : '') + '</label>' +
+      '<input name="' + name + '" type="' + inputType + '" placeholder="' + ph + '"' + req + extra + '/></div>';
+  }
 
   function buildEmbedHtml(form) {
     var base = state.publicBaseUrl || 'http://localhost:3000';
@@ -528,24 +639,19 @@
     if (form.type === 'direct') {
       body = '<button type="button" data-bcs-form="' + esc(form.id) + '" style="padding:14px 24px;background:#25D366;color:#fff;border:none;border-radius:50px;font-size:16px;font-weight:bold;cursor:pointer">💬 Konsultasi via WhatsApp</button>';
     } else {
-      body = selectField('nama', 'Nama Lengkap', 'Contoh: Budi Santoso') +
-        selectField('nohp', 'Nomor WhatsApp', '0812...');
-      if (form.type === 'long') {
-        body += selectField('plat', 'Plat Nomor', 'B 1234 ABC') + selectField('mobil', 'Merek & Tipe Mobil', 'Honda HR-V') + textField('workshop', 'Lokasi Bengkel') +
-          selectField('keluhan', 'Keluhan / Layanan', 'Opsional');
-      } else if (form.type === 'short') {
-        body += textField('workshop', 'Lokasi Bengkel');
-      } else if (form.type === 'order') {
-        body += textField('workshop', 'Lokasi Bengkel') + '<div id="fo-products" style="margin-bottom:12px"></div>';
-      }
+      var fields = Array.isArray(form.fields) && form.fields.length ? form.fields : normalizeFields(form);
+      body = fields.map(fieldToEmbedHtml).join('');
+      if (form.type === 'order') body += '<div id="fo-products" style="margin-bottom:12px"></div>';
       body += '<button type="submit" style="width:100%;padding:13px;background:#25D366;color:#fff;border:none;border-radius:6px;font-size:15px;font-weight:bold;cursor:pointer">Kirim via WhatsApp</button>';
     }
 
+    var fieldsForConfig = Array.isArray(form.fields) && form.fields.length ? form.fields : normalizeFields(form);
     var formConfig = {
       id: form.id, name: form.name, type: form.type,
       adminWa: wa, submitAction: form.submitAction || 'whatsapp', redirectUrl: form.redirectUrl || '',
       tracking: form.tracking || { metaPixel: false, gtm: false, tiktok: false, googleAds: false },
-      pixelIds: form.pixelIds || { metaPixel: '', gtm: '', tiktok: '', googleAds: '' }
+      pixelIds: form.pixelIds || { metaPixel: '', gtm: '', tiktok: '', googleAds: '' },
+      fields: fieldsForConfig
     };
 
     var orderScript = '';

@@ -289,14 +289,24 @@
 
   function isEmpty(v) { return v === undefined || v === null || v === '' || v === '-'; }
 
-  function validate(form, lead) {
+  function getRequiredFields(form) {
+    if (Array.isArray(form.fields) && form.fields.length) {
+      return form.fields.filter(function (f) { return f.required; }).map(function (f) { return f.name; });
+    }
     var required = ['nama', 'nohp'];
     if (form.type === 'long') required = ['nama', 'nohp', 'workshop'];
     if (form.type === 'order') required = ['nama', 'nohp'];
+    return required;
+  }
+  function validate(form, lead) {
+    var required = getRequiredFields(form);
     for (var i = 0; i < required.length; i++) {
       if (isEmpty(lead[required[i]])) return required[i];
     }
-    if (form.type === 'order' && (!lead.products || !lead.products.length)) return 'produk';
+    if (form.type === 'order' && (!lead.products || !lead.products.length)) {
+      // only enforce if no dynamic fields override
+      if (!Array.isArray(form.fields) || !form.fields.length) return 'produk';
+    }
     return null;
   }
 
@@ -323,12 +333,24 @@
     if (form.type === 'direct') {
       msg += '\nMohon informasi ketersediaan jadwalnya. Terima kasih.';
     } else {
-      msg += '👤 *Nama:* ' + (lead.nama || '-') + '\n📞 *WhatsApp:* ' + (lead.nohp || '-') + '\n';
-      if (form.type === 'long') {
-        msg += '🪪 *Plat:* ' + (lead.plat || '-') + '\n🚘 *Mobil:* ' + (lead.mobil || '-') + '\n';
+      // dynamic fields to WA message
+      var fields = Array.isArray(form.fields) && form.fields.length ? form.fields : null;
+      if (fields) {
+        var iconMap = { nama: '👤', nohp: '📞', plat: '🪪', mobil: '🚘', workshop: '📍', cabang: '📍', keluhan: '🛠️' };
+        fields.forEach(function (f) {
+          var v = lead[f.name] || '-';
+          var icon = iconMap[f.name] || '📝';
+          var lbl = f.label || f.name;
+          msg += icon + ' *' + lbl + ':* ' + v + '\n';
+        });
+      } else {
+        msg += '👤 *Nama:* ' + (lead.nama || '-') + '\n📞 *WhatsApp:* ' + (lead.nohp || '-') + '\n';
+        if (form.type === 'long') {
+          msg += '🪪 *Plat:* ' + (lead.plat || '-') + '\n🚘 *Mobil:* ' + (lead.mobil || '-') + '\n';
+        }
+        msg += '📍 *Lokasi:* ' + (lead.workshop || '-') + '\n';
+        if (!isEmpty(lead.keluhan)) msg += '🛠️ *Keluhan:* ' + lead.keluhan + '\n';
       }
-      msg += '📍 *Lokasi:* ' + (lead.workshop || '-') + '\n';
-      if (!isEmpty(lead.keluhan)) msg += '🛠️ *Keluhan:* ' + lead.keluhan + '\n';
       if (form.type === 'order' && lead.products && lead.products.length) {
         msg += '\n🛒 *Layanan dipilih:*\n';
         lead.products.forEach(function (p) { msg += '- ' + (p.qty || 1) + 'x ' + p.name + '\n'; });
