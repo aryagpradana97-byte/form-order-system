@@ -19,12 +19,16 @@ const PORT = process.env.PORT || 3000;
 
 /* Optional: mirror every submission to a NEW Google Sheet (via a NEW Apps
  * Script web app). Set GOOGLE_SHEET_WEBAPP_URL or config.json. */
-let CONFIG = { googleSheetWebAppUrl: '', publicBaseUrl: '' };
+let CONFIG = { googleSheetWebAppUrl: '', publicBaseUrl: '', adminUser: '', adminPass: '' };
 try {
   CONFIG = Object.assign(CONFIG, JSON.parse(fs.readFileSync(path.join(ROOT, 'config.json'), 'utf8')));
 } catch (e) { /* no config.json yet */ }
 if (process.env.GOOGLE_SHEET_WEBAPP_URL) CONFIG.googleSheetWebAppUrl = process.env.GOOGLE_SHEET_WEBAPP_URL;
 if (process.env.PUBLIC_BASE_URL) CONFIG.publicBaseUrl = process.env.PUBLIC_BASE_URL;
+if (process.env.ADMIN_USER) CONFIG.adminUser = process.env.ADMIN_USER;
+if (process.env.ADMIN_PASS) CONFIG.adminPass = process.env.ADMIN_PASS;
+if (!CONFIG.adminUser) CONFIG.adminUser = 'admin';
+if (!CONFIG.adminPass) CONFIG.adminPass = 'admin123';
 
 const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
 const FORMS_FILE = path.join(DATA_DIR, 'forms.json');
@@ -581,6 +585,39 @@ function serveStatic(res, urlPath) {
 }
 
 /* ------------------------------------------------------------------ *
+ *  Basic auth (protect the dashboard + admin API)                     *
+ * ------------------------------------------------------------------ */
+function isPublicPath(pathname, method) {
+  if (pathname === '/api/track') return true;
+  if (pathname === '/api/health') return true;
+  if (method === 'GET' && (pathname === '/api/forms' || pathname === '/api/products')) return true;
+  if (pathname.indexOf('/tracker/') === 0) return true;
+  if (pathname === '/demo.html') return true;
+  if (pathname === '/' || pathname === '/favicon.ico') return false;
+  return false;
+}
+
+function checkAuth(req) {
+  const h = req.headers['authorization'] || '';
+  if (h.indexOf('Basic ') !== 0) return false;
+  const decoded = Buffer.from(h.slice(6), 'base64').toString('utf8');
+  const idx = decoded.indexOf(':');
+  if (idx < 0) return false;
+  const u = decoded.slice(0, idx);
+  const p = decoded.slice(idx + 1);
+  return u === CONFIG.adminUser && p === CONFIG.adminPass;
+}
+
+function sendUnauthorized(res) {
+  res.writeHead(401, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'WWW-Authenticate': 'Basic realm="Form Order System"',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.end(JSON.stringify({ error: 'unauthorized' }));
+}
+
+/* ------------------------------------------------------------------ *
  *  Router                                                             *
  * ------------------------------------------------------------------ */
 const server = http.createServer(async (req, res) => {
@@ -593,9 +630,14 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization'
     });
     return res.end();
+  }
+
+  // Require login for dashboard + admin API (public form/tracker paths are allowed)
+  if (!isPublicPath(pathname, method) && !checkAuth(req)) {
+    return sendUnauthorized(res);
   }
 
   try {

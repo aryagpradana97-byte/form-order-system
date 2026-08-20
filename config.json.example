@@ -1,4 +1,6 @@
 {
   "googleSheetWebAppUrl": "",
-  "publicBaseUrl": ""
+  "publicBaseUrl": "",
+  "adminUser": "admin",
+  "adminPass": "CHANGE_ME"
 }
